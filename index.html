@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abeille 8-bit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1b2f; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; image-rendering: crisp-edges; cursor: crosshair; }
+  h1 {
+    position: fixed; top: 16px; left: 0; right: 0; margin: 0; text-align: center;
+    font: 20px/1.4 "Press Start 2P", monospace; color: #fff;
+    text-shadow: 3px 3px 0 #1b1b2f; pointer-events: none; letter-spacing: 2px;
+  }
+  p {
+    position: fixed; bottom: 12px; left: 0; right: 0; margin: 0; text-align: center;
+    font: 10px/1.4 "Press Start 2P", monospace; color: #fff; text-shadow: 2px 2px 0 #1b1b2f; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<h1>BZZZ...</h1>
+<canvas id="c"></canvas>
+<p>Bouge la souris ou touche l'écran</p>
+<script>
+const W = 192, H = 108;                 // résolution interne "8 bits"
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+cv.width = W; cv.height = H;
+
+const PAL = {
+  K: '#1b1b2f', Y: '#ffd23f', B: '#1b1b2f', w: '#5a6b8c', W: '#d8f1ff',
+  S: '#3a3a4a', e: '#ffffff', E: '#1b1b2f'
+};
+const BODY = [
+  "....KKKKKKKK.KK...",
+  "...KYYBBYYBBKYYK..",
+  ".SKYYYBBYYBBKYeEK.",
+  "SSKYYYBBYYBBKYeeK.",
+  ".SKYYYBBYYBBKYYYK.",
+  "...KYYBBYYBBKYYK..",
+  "....KKKKKKKK.KK...",
+  ".....K..K.........",
+];
+const UP = [
+  "......ww...ww.....",
+  ".....wWWw.wWWw....",
+  ".....wWWWwWWWw....",
+  "......wWWwWWw.....",
+  ".......wwwww..K.K.",
+];
+const DOWN = [
+  "..................",
+  "..................",
+  "..................",
+  ".....wwwwwww......",
+  "....wWWWWWWWw.K.K.",
+];
+const FRAMES = [UP.concat(BODY), DOWN.concat(BODY)];
+
+function drawSprite(rows, x, y, flip, k = 1) {
+  const w = rows[0].length;
+  for (let j = 0; j < rows.length; j++)
+    for (let i = 0; i < w; i++) {
+      const c = rows[j][i];
+      if (c === '.') continue;
+      ctx.fillStyle = PAL[c];
+      ctx.fillRect(Math.round(x) + (flip ? w - 1 - i : i) * k, Math.round(y) + j * k, k, k);
+    }
+}
+
+// --- petite fille ---
+Object.assign(PAL, {
+  H: '#ffe066', h: '#d9a93a', s: '#ffd1a8', r: '#ff8fa3',
+  D: '#ff5c8a', d: '#c93a66', F: '#8b3a3a'
+});
+const GIRL_TOP = [
+  "...hHHHHh...",
+  "..hHHHHHHh..",
+  ".hHHHHHHHHh.",
+  ".HhHHssssss.",
+  "hHHhssKssKs.",
+  "HhHhsssssss.",
+  ".hHhsrssrss.",
+  "..h..ssss...",
+  "....DDDDD...",
+  "...DDDDDDs..",
+  "..DDDDDDDd..",
+  ".DDDDDDDDDd.",
+  ".dDDDDDDDDd.",
+];
+const GIRL_RUN = [
+  GIRL_TOP.concat(["...s....s...", "..s......s..", ".FF......FF."]),
+  GIRL_TOP.concat([".....ss.....", ".....ss.....", "....FFFF...."]),
+];
+const girl = { x: 20, vx: 0, z: 0, vz: 0, flip: false };
+const GROUND = H - 8;
+const GK = 2; // échelle de la petite fille
+
+function updateGirl(t) {
+  // elle vise un point juste derrière l'abeille
+  const tx = bee.x + (bee.flip ? 14 : -38);
+  const dx = tx - girl.x;
+  const want = Math.max(-0.9, Math.min(0.9, dx * 0.05));
+  girl.vx += (want - girl.vx) * 0.15;
+  girl.x = Math.max(4, Math.min(W - 28, girl.x + girl.vx));
+  if (Math.abs(girl.vx) > 0.08) girl.flip = girl.vx < 0;
+  // petit saut quand l'abeille passe bas au-dessus d'elle
+  if (girl.z === 0 && Math.abs(bee.x - girl.x - 12) < 18 && bee.y > H - 65 && Math.random() < 0.03) girl.vz = 2.2;
+  girl.vz -= 0.12; girl.z = Math.max(0, girl.z + girl.vz);
+  if (girl.z === 0) girl.vz = 0;
+}
+function drawGirl(t) {
+  const running = Math.abs(girl.vx) > 0.15 && girl.z === 0;
+  const frame = running ? GIRL_RUN[Math.floor(t / 110) % 2] : GIRL_RUN[1];
+  const bounce = running && Math.floor(t / 110) % 2 === 1 ? 1 : 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(Math.round(girl.x + 4), GROUND, 16, 1);
+  drawSprite(frame, girl.x, GROUND - frame.length * GK - bounce - Math.round(girl.z), girl.flip, GK);
+}
+
+// --- décor ---
+const clouds = Array.from({length: 4}, (_, i) => ({ x: i * 55 + Math.random() * 20, y: 8 + Math.random() * 25, s: 0.05 + Math.random() * 0.08 }));
+function drawCloud(x, y) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 4, y, 10, 3);
+  ctx.fillRect(x, y + 3, 22, 4);
+  ctx.fillRect(x + 12, y - 2, 6, 3);
+  ctx.fillStyle = '#cfe8ff';
+  ctx.fillRect(x, y + 6, 22, 1);
+}
+const FLOWER_COLORS = ['#ff5c8a', '#ff8c42', '#b388ff', '#ffffff', '#ff4d4d'];
+const flowers = Array.from({length: 14}, (_, i) => ({
+  x: 6 + i * 13 + Math.floor(Math.random() * 6),
+  h: 6 + Math.floor(Math.random() * 10),
+  c: FLOWER_COLORS[i % FLOWER_COLORS.length],
+}));
+function drawFlower(f, t) {
+  const sway = Math.round(Math.sin(t / 700 + f.x) * 1);
+  const base = H - 14;
+  ctx.fillStyle = '#2e8b3a';
+  ctx.fillRect(f.x, base - f.h, 1, f.h);
+  ctx.fillRect(f.x + 1, base - Math.floor(f.h / 2), 2, 1);
+  const cx = f.x + sway, cy = base - f.h - 2;
+  ctx.fillStyle = f.c;
+  ctx.fillRect(cx - 1, cy - 2, 3, 1);
+  ctx.fillRect(cx - 2, cy - 1, 5, 3);
+  ctx.fillRect(cx - 1, cy + 2, 3, 1);
+  ctx.fillStyle = '#ffd23f';
+  ctx.fillRect(cx, cy, 1, 1);
+}
+function drawBackground(t) {
+  const bands = ['#5ec8ff', '#6fd0ff', '#82d8ff', '#97e0ff', '#aee8ff', '#c4efff'];
+  const bh = Math.ceil((H - 14) / bands.length);
+  bands.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * bh, W, bh); });
+  // soleil
+  ctx.fillStyle = '#fff3a0'; ctx.fillRect(W - 30, 8, 14, 14);
+  ctx.fillStyle = '#ffe066'; ctx.fillRect(W - 28, 10, 10, 10);
+  clouds.forEach(c => { c.x -= c.s; if (c.x < -26) c.x = W + 4; drawCloud(Math.round(c.x), Math.round(c.y)); });
+  // collines
+  ctx.fillStyle = '#7fd66b';
+  for (let x = 0; x < W; x++) {
+    const hh = Math.round(6 + Math.sin(x / 18) * 3 + Math.sin(x / 7) * 1);
+    ctx.fillRect(x, H - 14 - hh, 1, hh);
+  }
+  // sol
+  ctx.fillStyle = '#4caf50'; ctx.fillRect(0, H - 14, W, 14);
+  ctx.fillStyle = '#3b8f3f';
+  for (let x = 0; x < W; x += 4) ctx.fillRect(x + ((x / 4) % 2) * 2, H - 14, 1, 2);
+  ctx.fillStyle = '#8d5a2b'; ctx.fillRect(0, H - 6, W, 6);
+  ctx.fillStyle = '#6e4420';
+  for (let x = 0; x < W; x += 7) ctx.fillRect(x, H - 4 + (x % 3), 2, 1);
+  flowers.forEach(f => drawFlower(f, t));
+}
+
+// --- abeille ---
+const bee = { x: W / 2, y: H / 2, vx: 0, vy: 0, flip: false };
+const trail = [];
+let target = null, lastInput = -1e9;
+function setTarget(e) {
+  const r = cv.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  target = { x: (p.clientX - r.left) / r.width * W, y: (p.clientY - r.top) / r.height * H };
+  lastInput = performance.now();
+}
+cv.addEventListener('mousemove', setTarget);
+cv.addEventListener('touchstart', setTarget, { passive: true });
+cv.addEventListener('touchmove', setTarget, { passive: true });
+
+function loop(t) {
+  // cible : souris récente, sinon balade en "8"
+  let tx, ty;
+  if (target && t - lastInput < 3000) { tx = target.x; ty = target.y; }
+  else { tx = W / 2 + Math.sin(t / 2200) * (W * 0.35); ty = H / 2 - 10 + Math.sin(t / 1100) * (H * 0.22); }
+  bee.vx += (tx - bee.x) * 0.004; bee.vy += (ty - bee.y) * 0.004;
+  bee.vx *= 0.92; bee.vy *= 0.92;
+  bee.x += bee.vx; bee.y += bee.vy;
+  if (Math.abs(bee.vx) > 0.05) bee.flip = bee.vx < 0;
+
+  const bob = Math.round(Math.sin(t / 120) * 1);
+  if (Math.floor(t / 60) % 2 === 0) trail.push({ x: bee.x, y: bee.y + 8, life: 40 });
+
+  drawBackground(t);
+  updateGirl(t);
+  drawGirl(t);
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const p = trail[i];
+    if (--p.life <= 0) { trail.splice(i, 1); continue; }
+    if (p.life % 4 < 2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
+  }
+  const frame = FRAMES[Math.floor(t / 70) % 2];
+  const sx = bee.x - 9, sy = bee.y - 6 + bob;
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(Math.round(bee.x - 5), H - 13, 10, 1);
+  drawSprite(frame, sx, sy, bee.flip);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
